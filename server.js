@@ -1,5 +1,6 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
+const crypto = require("crypto");
 
 const app = express();
 app.use(express.json({ limit: "20kb" }));
@@ -15,6 +16,23 @@ app.get("/", (req, res) => {
 
 app.post("/chat", async (req, res) => {
   try {
+    const appToken = process.env.HASAN_APP_TOKEN;
+    const auth = req.headers.authorization || "";
+    const suppliedToken = auth.startsWith("Bearer ")
+      ? auth.slice(7)
+      : "";
+
+    if (!appToken) {
+      return res.status(503).json({ error: "Server security not configured" });
+    }
+
+    const a = Buffer.from(suppliedToken);
+    const b = Buffer.from(appToken);
+
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     const message = req.body.message;
 
     if (!message || typeof message !== "string" || message.length > 5000) {
@@ -41,7 +59,7 @@ app.post("/chat", async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({
+      return res.status(502).json({
         error: data.error?.message || "OpenAI API request failed"
       });
     }
@@ -49,6 +67,7 @@ app.post("/chat", async (req, res) => {
     res.json({ reply: data.output_text || "কোনো উত্তর পাওয়া যায়নি।" });
 
   } catch (error) {
+    console.error("Chat error:", error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
